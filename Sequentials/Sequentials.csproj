@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netcoreapp3.1;net48</TargetFrameworks>
+    <AssemblyName>Sequentials</AssemblyName>
+    <Product></Product>
+    <Description></Description>
+    <LangVersion>8.0</LangVersion>
+    <Copyright>Copyright © 2021</Copyright>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="log4net" Version="2.0.12" />
+    <PackageReference Include="System.Reactive" Version="5.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\CleanMachine\CleanMachine.Behavioral\CleanMachine.Behavioral.csproj" />
+    <ProjectReference Include="..\..\CleanMachine\CleanMachine.Interfaces\CleanMachine.Interfaces.csproj" />
+    <ProjectReference Include="..\..\CleanMachine\CleanMachine\CleanMachine.csproj" />
+  </ItemGroup>
+
+</Project>
