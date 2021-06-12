@@ -28,6 +28,7 @@ namespace Sequentials
 
     public enum SequenceResult
     {
+        Unknown,
         Finished,
         Exited,
         Aborted,

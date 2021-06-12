@@ -39,10 +39,20 @@ namespace Sequentials
         public Sequence(string name, IUnityContainer runtimeContainer, ILog logger)
             : base(name, runtimeContainer, logger)
         {
-            AutoAdvance = true;
+            _autoAdvance = true;
             BuildPhase = Phase.Mutable;
+            Result = SequenceResult.Unknown;
             _abortCondition = () => _abortTokenSource.Token.IsCancellationRequested;
         }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public event EventHandler<string> ActionExecuted;
+
+        public event EventHandler Finished;
+        public event EventHandler Exited;
+        public event EventHandler Aborted;
 
         public Phase BuildPhase { get; protected set; }
 
@@ -53,6 +63,8 @@ namespace Sequentials
         public ActionNode FinalNode { get; protected set; }
 
         public SequenceState State { get; protected set; }
+
+        public SequenceResult Result { get; protected set; }
 
         internal protected Dictionary<Guid, ActionNode> Nodes { get; } = new Dictionary<Guid, ActionNode>();
 
@@ -79,11 +91,11 @@ namespace Sequentials
                     return;
                 }
 
-                CompleteAssembly();
+                //CompleteAssembly();
 
                 CurrentNode = InitialNode;
                 State = SequenceState.Running;
-                Signal(new DataWaypoint(this, nameof(Run)));
+                SignalAsync(new DataWaypoint(this, nameof(Run)));
             }
         }
 
@@ -116,95 +128,6 @@ namespace Sequentials
         }
 
         /// <summary>
-        /// Stimulate the currently enabled passive transitions to attempt to exit the current state.
-        /// 
-        /// TODO: Change this? Only passive transitions are stimulated because presence of a trigger is
-        /// taken to indicate that only the trigger should be able to stimulate the transition.
-        /// </summary>
-        /// <param name="signalSource"></param>
-        /// <returns>True if the signal caused a transition; false otherwise.</returns>
-        protected override bool StimulateUnsafe(TripEventArgs tripArgs)
-        {
-            bool result;
-            if (State != SequenceState.Running)
-            {
-                return false;
-            }
-
-            if (result = TryAbort(tripArgs))
-            {
-
-            }
-            else if (result = TryExit(tripArgs))
-            {
-
-            }
-            else if (result = TryContinue(tripArgs))
-            {
-
-            }
-            else
-            {
-                // CurrentNode is end of the sequence.  Try to finish.
-            }
-
-            //TODO LOG IT?
-            return result;
-        }
-
-        protected bool TryAbort(TripEventArgs tripArgs)
-        {
-            return CurrentNode.AbortLink.AttemptTraverse(tripArgs);
-        }
-
-        protected bool TryExit(TripEventArgs tripArgs)
-        {
-            return CurrentNode.ExitLink.AttemptTraverse(tripArgs);
-        }
-
-        protected bool TryContinue(TripEventArgs tripArgs)
-        {
-            var continuations = CurrentNode.ContinueLinks;
-            foreach (var continuation in continuations)
-            {
-                if (continuation.AttemptTraverse(tripArgs))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        protected void OnFinished(IUnityContainer container)
-        {
-            if (CurrentNode != FinalNode)
-            {
-                //log
-                return;
-            }
-
-            //TODO: get transition 
-            Link finalLink = null;
-            Stereotypes finalReason = finalLink.Stereotype.ToEnum<Stereotypes>();
-            switch (finalReason)
-            {
-                case Stereotypes.Exit:
-                    State = SequenceState.Exited;
-                    break;
-
-                case Stereotypes.Abort:
-                    State = SequenceState.Aborted;
-                    break;
-
-                case Stereotypes.Continue:
-                case Stereotypes.Finish:
-                    State = SequenceState.Finished;
-                    break;
-            }
-        }
-
-        /// <summary>
         /// Create the Initial and Final nodes.
         /// </summary>
         internal protected void Initialize(string finishName = null, Func<bool> finishCondition = null, IEnumerable<Func<IUnityContainer, TriggerBase>> finishStimuli = null)
@@ -226,11 +149,20 @@ namespace Sequentials
 
             // Add an initial node that has no action to perform. NOTE: no inbound links here.
             InitialNode = new ActionNode(InitialNodeName, Name, Logger, RuntimeContainer, _abortTokenSource.Token);
-            Nodes.Add(InitialNode.Uid, InitialNode);
-            
+            AddNode(InitialNode);
+
             FinalNode = new ActionNode(FinalNodeName, Name, Logger, RuntimeContainer, _abortTokenSource.Token);
-            Nodes.Add(FinalNode.Uid, FinalNode);
+            AddNode(FinalNode);
             FinalNode.SetEntryBehavior(new Behavior(nameof(OnFinished), (c) => OnFinished(c)));
+        }
+
+        internal protected void AddNode(ActionNode node)
+        {
+            Nodes[node.Uid] = node;
+            _states.Add(node);
+            //node.EnteredInternal += HandleStateEnteredInternal;
+            //node.Entered += HandleStateEntered;
+            //node.Exited += HandleStateExited;
         }
 
         /// <summary>
@@ -333,8 +265,97 @@ namespace Sequentials
             }
         }
 
+        /// <summary>
+        /// Stimulate the currently enabled passive transitions to attempt to exit the current state.
+        /// 
+        /// TODO: Change this? Only passive transitions are stimulated because presence of a trigger is
+        /// taken to indicate that only the trigger should be able to stimulate the transition.
+        /// </summary>
+        /// <param name="signalSource"></param>
+        /// <returns>True if the signal caused a transition; false otherwise.</returns>
+        protected override bool StimulateUnsafe(TripEventArgs tripArgs)
+        {
+            bool result;
+            if (State != SequenceState.Running)
+            {
+                return false;
+            }
+
+            if (result = TryAbort(tripArgs))
+            {
+
+            }
+            else if (result = TryExit(tripArgs))
+            {
+
+            }
+            else if (result = TryContinue(tripArgs))
+            {
+
+            }
+            else
+            {
+                // CurrentNode is end of the sequence.  Try to finish.
+            }
+
+            //TODO LOG IT?
+            return result;
+        }
+
+        protected bool TryAbort(TripEventArgs tripArgs)
+        {
+            return CurrentNode.AbortLink.AttemptTraverse(tripArgs);
+        }
+
+        protected bool TryExit(TripEventArgs tripArgs)
+        {
+            return CurrentNode.ExitLink.AttemptTraverse(tripArgs);
+        }
+
+        protected bool TryContinue(TripEventArgs tripArgs)
+        {
+            var continuations = CurrentNode.ContinueLinks;
+            foreach (var continuation in continuations)
+            {
+                if (continuation.AttemptTraverse(tripArgs))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        protected void OnFinished(IUnityContainer container)
+        {
+            if (CurrentNode != FinalNode)
+            {
+                //log
+                return;
+            }
+
+            //TODO: get transition 
+            Link finalLink = null;
+            Stereotypes finalReason = finalLink.Stereotype.ToEnum<Stereotypes>();
+            switch (finalReason)
+            {
+                case Stereotypes.Exit:
+                    //State = SequenceState.Exited;
+                    break;
+
+                case Stereotypes.Abort:
+                    //State = SequenceState.Aborted;
+                    break;
+
+                case Stereotypes.Continue:
+                case Stereotypes.Finish:
+                    //State = SequenceState.Finished;
+                    break;
+            }
+        }
+
         // // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
-        // ~ActivitySequence()
+        // ~Sequence()
         // {
         //     // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
         //     Dispose(disposing: false);
@@ -371,24 +392,37 @@ namespace Sequentials
             //Proceed();
         }
 
-        protected override void CreateStates(IEnumerable<string> stateNames)
-        {
-            throw new NotImplementedException();
-        }
+        //protected override void CreateStates(IEnumerable<string> stateNames)
+        //{
+        //    throw new NotImplementedException();
+        //}
 
+        /// <summary>
+        /// Raise the <see cref="ActionExecuted"/> event instead of the <see cref="StateChanged"/> event.
+        /// </summary>
+        /// <param name="args"></param>
         protected override void OnStateChanged(TripEventArgs args)
         {
-            throw new NotImplementedException();
+            var state = args.FindLastState();
+            try
+            {
+                Logger.Debug($"{Name}:  raising '{nameof(ActionExecuted)}' event.");
+                ActionExecuted?.Invoke(this, state.Name);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"{ex.GetType().Name} during '{nameof(ActionExecuted)}' event from {Name} sequence.", ex);
+            }
         }
 
         protected override void HandleStateExited(object sender, StateExitedEventArgs args)
         {
-            throw new NotImplementedException();
+            //throw new NotImplementedException();
         }
 
         protected override void HandleStateEntered(object sender, StateEnteredEventArgs args)
         {
-            throw new NotImplementedException();
+            //throw new NotImplementedException();
         }
     }
 }

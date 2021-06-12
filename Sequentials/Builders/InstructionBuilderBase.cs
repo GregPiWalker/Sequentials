@@ -62,68 +62,88 @@ namespace Sequentials.Builders
 
         protected void BeginBuilding(Sequence sequence)
         {
-            Sequence = sequence;
-            _logger = sequence.Logger;
+            try
+            {
+                Sequence = sequence;
+                _logger = sequence.Logger;
+                Sequence.Edit();
 
-            if (_linkBinders == null)
-            {
-                _linkBinders = new List<Binder>();
-            }
-            else
-            {
-                _linkBinders.Clear();
-            }
+                if (_linkBinders == null)
+                {
+                    _linkBinders = new List<Binder>();
+                }
+                else
+                {
+                    _linkBinders.Clear();
+                }
 
-            if (_namedNodes == null)
-            {
-                _namedNodes = new Dictionary<string, ActionNode>();
-            }
-            else
-            {
-                _namedNodes.Clear();
-            }
+                if (_namedNodes == null)
+                {
+                    _namedNodes = new Dictionary<string, ActionNode>();
+                }
+                else
+                {
+                    _namedNodes.Clear();
+                }
 
-            Sequence.Initialize();
-            _namedNodes.Add(Sequence.InitialNode.Name, Sequence.InitialNode);
-            _namedNodes.Add(Sequence.FinalNode.Name, Sequence.FinalNode);
+                Sequence.Initialize();
+                _namedNodes.Add(Sequence.InitialNode.Name, Sequence.InitialNode);
+                _namedNodes.Add(Sequence.FinalNode.Name, Sequence.FinalNode);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"{ex.GetType().Name} during {nameof(BeginBuilding)}:  {ex.Message}", ex);
+                throw ex;
+            }
         }
 
         protected void CompleteBuild()
         {
-            foreach (var binder in _linkBinders)
+            try
             {
-                var from = binder.FromState ?? Sequence.Nodes[binder.FromId];
-                var to = binder.ToState ?? Sequence.Nodes[binder.ToId];
+                foreach (var binder in _linkBinders)
+                {
+                    var from = binder.FromState ?? Sequence.Nodes[binder.FromId];
+                    var to = binder.ToState ?? Sequence.Nodes[binder.ToId];
 
-                var contKeys = binder.ReflexKeys ?? new string[] { };
-                var contStimuli = from key in contKeys
+                    var contKeys = binder.ReflexKeys ?? new string[] { };
+                    var contStimuli = from key in contKeys
+                                      where Stimuli.ContainsKey(key)
+                                      select Stimuli[key];
+                    Sequence.SetContinueLink(from as ActionNode, to as ActionNode, binder.Guard, contStimuli);
+                }
+
+                var exitKeys = _exitReflexKeys ?? new string[] { };
+                var exitStimuli = from key in exitKeys
                                   where Stimuli.ContainsKey(key)
                                   select Stimuli[key];
-                Sequence.SetContinueLink(from as ActionNode, to as ActionNode, binder.Guard, contStimuli);
-            }
+                foreach (var node in Sequence.Nodes.Values)
+                {
+                    // TODO: Should No-Op nodes get abort/exit links?
+                    Sequence.SetRequiredLinks(node, new Constraint(_exitName, _exitCondition, Sequence.Logger), exitStimuli);
+                }
 
-            var exitKeys = _exitReflexKeys ?? new string[] { };
-            var exitStimuli = from key in exitKeys
-                              where Stimuli.ContainsKey(key)
-                              select Stimuli[key];
-            foreach (var node in Sequence.Nodes.Values)
+                var finishKeys = _finishReflexKeys ?? new string[] { };
+                var finishStimuli = from key in finishKeys
+                                    where Stimuli.ContainsKey(key)
+                                    select Stimuli[key];
+                // The last time Consumer was set should be the last node before the FinalNode.
+                Sequence.SetTerminalLink(Consumer, new Constraint(_finishName, _finishCondition, Sequence.Logger), finishStimuli);
+
+                Sequence.CompleteEdit();
+            }
+            catch (Exception ex)
             {
-                // TODO: Should No-Op nodes get abort/exit links?
-                Sequence.SetRequiredLinks(node, new Constraint(_exitName, _exitCondition, Sequence.Logger), exitStimuli);
+                _logger.Error($"{ex.GetType().Name} during {nameof(CompleteBuild)}:  {ex.Message}", ex);
+                throw ex;
             }
-
-            var finishKeys = _finishReflexKeys ?? new string[] { };
-            var finishStimuli = from key in finishKeys
-                                where Stimuli.ContainsKey(key)
-                                select Stimuli[key];
-            // The last time Consumer was set should be the last node before the FinalNode.
-            Sequence.SetTerminalLink(Consumer, new Constraint(_finishName, _finishCondition, Sequence.Logger), finishStimuli);
         }
 
         protected InstructionBuilderBase AddStart(string actionName, Action<IUnityContainer> action)
         {
             Consumer = Sequence.InitialNode;
-            AppendActionNode(actionName, action);
+            var start = AppendActionNode(actionName, action);
+            Sequence.SetInitialState(start.Name);
 
             return this;
         }
@@ -131,7 +151,8 @@ namespace Sequentials.Builders
         protected InstructionBuilderBase AddStartWhen(string whenName, Func<bool> whenCondition, params string[] reflexKeys)
         {
             Consumer = Sequence.InitialNode;
-            AppendNoOpNode("When", whenName, whenCondition, reflexKeys);
+            var start = AppendNoOpNode("When", whenName, whenCondition, reflexKeys);
+            Sequence.SetInitialState(start.Name);
 
             return this;
         }
@@ -234,7 +255,7 @@ namespace Sequentials.Builders
                 node.AddDoBehavior(new Behavior(nodeName, doBehavior));
             }
 
-            Sequence.Nodes[node.Uid] = node;
+            Sequence.AddNode(node);
             return node;
         }
 
@@ -296,6 +317,17 @@ namespace Sequentials.Builders
             _linkBinders.Add(binder);
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <typeparam name="TSource"></typeparam>
+        /// <typeparam name="TEventArgs">The Type of the EventArgs to build the Trigger for.</typeparam>
+        /// <param name="stimuli"></param>
+        /// <param name="key"></param>
+        /// <param name="evSource"></param>
+        /// <param name="evName"></param>
+        /// <param name="filter">a Func that will be given to an IConstraint in order to implement a filter for the Trigger.</param>
+        /// <param name="filterName">A string name for the IConstraint used to implement the given filter.</param>
         protected static void AddStimulus<TSource, TEventArgs>(Dictionary<string, Func<IUnityContainer, TriggerBase>> stimuli, string key, TSource evSource, string evName, Func<TEventArgs, bool> filter = null, string filterName = null) //where TEventArgs : EventArgs
         {
             if (stimuli.ContainsKey(key))
@@ -323,6 +355,18 @@ namespace Sequentials.Builders
             }
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <typeparam name="TSource"></typeparam>
+        /// <typeparam name="TDelegate">The Type of the EventHandler delegate to build the Trigger for.</typeparam>
+        /// <typeparam name="TEventArgs">The Type of the EventArgs to build the Trigger for.</typeparam>
+        /// <param name="stimuli"></param>
+        /// <param name="key"></param>
+        /// <param name="evSource"></param>
+        /// <param name="evName"></param>
+        /// <param name="filter">a Func that will be given to an IConstraint in order to implement a filter for the Trigger.</param>
+        /// <param name="filterName">A string name for the IConstraint used to implement the given filter.</param>
         protected static void AddDelegateStimulus<TSource, TDelegate, TEventArgs>(Dictionary<string, Func<IUnityContainer, TriggerBase>> stimuli, string key, TSource evSource, string evName, Func<TEventArgs, bool> filter = null, string filterName = null) //where TEventArgs : EventArgs
         {
             if (stimuli.ContainsKey(key))

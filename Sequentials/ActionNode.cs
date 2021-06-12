@@ -22,6 +22,7 @@ namespace Sequentials
             AbortToken = abortToken;
             ValidateTrips = false;
             Uid = Guid.NewGuid();
+            Editable = true;
         }
 
         public Guid Uid { get; }

@@ -12,11 +12,13 @@ namespace Sequentials
             : base(context, stereotype, logger)
         {
             To = consumer;
+            Editable = true;
         }
 
         public Link(string context, string stereotype, ILog logger)
             : base(context, stereotype, logger)
         {
+            Editable = true;
         }
 
         /// <summary>
