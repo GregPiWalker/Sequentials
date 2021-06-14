@@ -14,7 +14,7 @@ namespace Sequentials.Builders
             TakeFrom(other);
         }
 
-        public ReducedBuilder2 JumpIf(string jumpDestName, string ifName, Func<bool> ifCondition, params string[] reflexKeys)
+        public ReducedBuilder2 JumpIf(string jumpDestName, string ifName, Func<IUnityContainer, bool> ifCondition, params string[] reflexKeys)
         {
             AddJumpIf(jumpDestName, ifName, ifCondition, reflexKeys);
             return this;
@@ -26,19 +26,19 @@ namespace Sequentials.Builders
             return this;
         }
 
-        public ReducedBuilder2 IfThen(string ifName, Func<bool> ifCondition, string thenName, Action<IUnityContainer> thenBehavior, params string[] reflexKeys)
+        public ReducedBuilder2 IfThen(string ifName, Func<IUnityContainer, bool> ifCondition, string thenName, Action<IUnityContainer> thenBehavior, params string[] reflexKeys)
         {
             AddIfThen(ifName, ifCondition, thenName, thenBehavior, reflexKeys);
             return this;
         }
 
-        public ReducedBuilder2 IfThenElse(string ifName, Func<bool> ifCondition, string thenName, Action<IUnityContainer> thenBehavior, string elseName, Action<IUnityContainer> elseBehavior, params string[] reflexKeys)
+        public ReducedBuilder2 IfThenElse(string ifName, Func<IUnityContainer, bool> ifCondition, string thenName, Action<IUnityContainer> thenBehavior, string elseName, Action<IUnityContainer> elseBehavior, params string[] reflexKeys)
         {
             AddIfThenElse(ifName, ifCondition, thenName, thenBehavior, elseName, elseBehavior, reflexKeys);
             return this;
         }
 
-        public ReducedBuilder2 When(string whenName, Func<bool> whenCondition, params string[] reflexKeys)
+        public ReducedBuilder2 When(string whenName, Func<IUnityContainer, bool> whenCondition, params string[] reflexKeys)
         {
             AddWhen(whenName, whenCondition, reflexKeys);
             return new ReducedBuilder2(this);
@@ -50,7 +50,7 @@ namespace Sequentials.Builders
             return new ReducedBuilder3(this);
         }
 
-        public ReducedBuilder3 FinishWhen(string finishName, Func<bool> finishCondition, params string[] reflexKeys)
+        public ReducedBuilder3 FinishWhen(string finishName, Func<IUnityContainer, bool> finishCondition, params string[] reflexKeys)
         {
             AddFinish(finishName, finishCondition, reflexKeys);
             return new ReducedBuilder3(this);

@@ -11,7 +11,7 @@ namespace Sequentials.Builders
             return new ReducedBuilder1(this);
         }
 
-        public ReducedBuilder1 StartWhen(string whenName, Func<bool> whenCondition, params string[] reflexKeys)
+        public ReducedBuilder1 StartWhen(string whenName, Func<IUnityContainer, bool> whenCondition, params string[] reflexKeys)
         {
             AddStartWhen(whenName, whenCondition, reflexKeys);
             return new ReducedBuilder1(this);

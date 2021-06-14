@@ -42,6 +42,11 @@ namespace Sequentials
         public Link AbortLink { get; protected set; }
 
         /// <summary>
+        /// Gets the Link for finishing by leaving this node to the final node.
+        /// </summary>
+        public Link FinishLink { get; protected set; }
+
+        /// <summary>
         /// Gets a collection of CONTINUE Links from this node to the next activity node.
         /// </summary>
         public IEnumerable<Link> ContinueLinks => _outboundTransitions.Where(t => t.HasStereotype(Stereotypes.Continue)).Cast<Link>();
@@ -72,7 +77,8 @@ namespace Sequentials
                 }
                 else
                 {
-                    canExit = ExitConstraint?.IsTrue() ?? false;
+                    // Allow exit if there is no constraint, or the constraint is true.
+                    canExit = ExitConstraint?.IsTrue() ?? true;
                 }
             }
 
@@ -90,8 +96,13 @@ namespace Sequentials
             {
                 ExitLink = link;
             }
+            else if (Stereotypes.Finish.ToString().Equals(stereotype))
+            {
+                FinishLink = link;
+            }
 
             AddTransition(link);
+            link.Connect(this, consumer);
 
             return link;
         }

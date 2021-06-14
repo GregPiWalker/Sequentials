@@ -8,6 +8,7 @@ using CleanMachine.Generic;
 using CleanMachine.Behavioral.Behaviors;
 using Unity;
 using log4net;
+using CleanMachine.Interfaces;
 
 namespace Sequentials.Builders
 {
@@ -16,12 +17,19 @@ namespace Sequentials.Builders
         protected ILog _logger;
         protected List<Binder> _linkBinders;
         protected Dictionary<string, ActionNode> _namedNodes;
-        protected string _finishName;
-        protected Func<bool> _finishCondition;
-        protected string[] _finishReflexKeys;
-        protected string _exitName;
-        protected Func<bool> _exitCondition;
-        protected string[] _exitReflexKeys;
+        //protected string _finishName;
+        //protected Func<IUnityContainer, bool> _finishCondition;
+        //protected string[] _finishReflexKeys;
+        //protected ActionNode _finishSupplier;
+        //protected string _exitName;
+        //protected Func<IUnityContainer, bool> _exitCondition;
+        //protected string[] _exitReflexKeys;
+        protected LinkBinder _exitBinder = null;
+        protected LinkBinder _finishBinder = null;
+
+
+        private static Func<object, IUnityContainer> ConstraintTransform = (input) => 
+            { return ((input as TripEventArgs).GetTripOrigin().Juncture as Sequence).RuntimeContainer; };
 
         /// <summary>
         /// Gets the available Stimuli, which are templates for creating Triggers.
@@ -43,12 +51,15 @@ namespace Sequentials.Builders
             _logger = other._logger;
             _linkBinders = other._linkBinders;
             _namedNodes = other._namedNodes;
-            _exitName = other._exitName;
-            _exitCondition = other._exitCondition;
-            _exitReflexKeys = other._exitReflexKeys;
-            _finishName = other._finishName;
-            _finishCondition = other._finishCondition;
-            _finishReflexKeys = other._finishReflexKeys;
+            //_exitName = other._exitName;
+            //_exitCondition = other._exitCondition;
+            //_exitReflexKeys = other._exitReflexKeys;
+            _exitBinder = other._exitBinder;
+            //_finishName = other._finishName;
+            //_finishCondition = other._finishCondition;
+            //_finishSupplier = other._finishSupplier;
+            //_finishReflexKeys = other._finishReflexKeys;
+            _finishBinder = other._finishBinder;
 
             PreviousSupplier = other.PreviousSupplier;
             Supplier = other.Supplier;
@@ -113,22 +124,28 @@ namespace Sequentials.Builders
                     Sequence.SetContinueLink(from as ActionNode, to as ActionNode, binder.Guard, contStimuli);
                 }
 
-                var exitKeys = _exitReflexKeys ?? new string[] { };
+                var exitKeys = _exitBinder.ReflexKeys ?? new string[] { };
                 var exitStimuli = from key in exitKeys
                                   where Stimuli.ContainsKey(key)
                                   select Stimuli[key];
                 foreach (var node in Sequence.Nodes.Values)
                 {
                     // TODO: Should No-Op nodes get abort/exit links?
-                    Sequence.SetRequiredLinks(node, new Constraint(_exitName, _exitCondition, Sequence.Logger), exitStimuli);
+                    IConstraint exitGuard = (_exitBinder.GuardCondition == null) 
+                        ? null 
+                        : new Constraint<IUnityContainer>(_exitBinder.GuardName, _exitBinder.GuardCondition, Sequence.RuntimeContainer, Sequence.Logger);
+                    Sequence.SetRequiredLinks(node, exitGuard, exitStimuli);
                 }
 
-                var finishKeys = _finishReflexKeys ?? new string[] { };
+                var finishKeys = _finishBinder.ReflexKeys ?? new string[] { };
                 var finishStimuli = from key in finishKeys
                                     where Stimuli.ContainsKey(key)
                                     select Stimuli[key];
                 // The last time Consumer was set should be the last node before the FinalNode.
-                Sequence.SetTerminalLink(Consumer, new Constraint(_finishName, _finishCondition, Sequence.Logger), finishStimuli);
+                IConstraint finishGuard = (_finishBinder.GuardCondition == null) 
+                    ? null 
+                    : new Constraint<IUnityContainer>(_finishBinder.GuardName, _finishBinder.GuardCondition, Sequence.RuntimeContainer, Sequence.Logger);
+                Sequence.SetTerminalLink(_finishBinder.LinkSupplier, finishGuard, finishStimuli);
 
                 Sequence.CompleteEdit();
             }
@@ -141,18 +158,36 @@ namespace Sequentials.Builders
 
         protected InstructionBuilderBase AddStart(string actionName, Action<IUnityContainer> action)
         {
+            if (_exitBinder == null)
+            {
+                _exitBinder = new LinkBinder();
+            }
+
+            if (_finishBinder == null)
+            {
+                _finishBinder = new LinkBinder();
+            }
+
             Consumer = Sequence.InitialNode;
-            var start = AppendActionNode(actionName, action);
-            Sequence.SetInitialState(start.Name);
+            AppendActionNode(actionName, action);
 
             return this;
         }
 
-        protected InstructionBuilderBase AddStartWhen(string whenName, Func<bool> whenCondition, params string[] reflexKeys)
+        protected InstructionBuilderBase AddStartWhen(string whenName, Func<IUnityContainer, bool> whenCondition, params string[] reflexKeys)
         {
+            if (_exitBinder == null)
+            {
+                _exitBinder = new LinkBinder();
+            }
+
+            if (_finishBinder == null)
+            {
+                _finishBinder = new LinkBinder();
+            }
+
             Consumer = Sequence.InitialNode;
-            var start = AppendNoOpNode("When", whenName, whenCondition, reflexKeys);
-            Sequence.SetInitialState(start.Name);
+            AppendNoOpNode("StartWhen", whenName, whenCondition, reflexKeys);
 
             return this;
         }
@@ -164,7 +199,7 @@ namespace Sequentials.Builders
             return this;
         }
 
-        protected InstructionBuilderBase AddWhen(string whenName, Func<bool> whenCondition, params string[] reflexKeys)
+        protected InstructionBuilderBase AddWhen(string whenName, Func<IUnityContainer, bool> whenCondition, params string[] reflexKeys)
         {
             // Add the consumer no-op node and a link to it from the previous node.
             AppendNoOpNode("When", whenName, whenCondition, reflexKeys);
@@ -172,7 +207,7 @@ namespace Sequentials.Builders
             return this;
         }
 
-        protected InstructionBuilderBase AddOrWhen(string conditionName, Func<bool> condition, params string[] reflexKeys)
+        protected InstructionBuilderBase AddOrWhen(string conditionName, Func<IUnityContainer, bool> condition, params string[] reflexKeys)
         {
             var previous = PreviousSupplier;
             // Add the consumer no-op node and a link to it from the previous node.
@@ -181,45 +216,45 @@ namespace Sequentials.Builders
             return this;
         }
 
-        protected InstructionBuilderBase AddJumpIf(string branchDestName, string ifName, Func<bool> ifCondition, params string[] reflexKeys)
+        protected InstructionBuilderBase AddJumpIf(string jumpDestName, string ifName, Func<IUnityContainer, bool> ifCondition, params string[] reflexKeys)
         {
             // Add the branch node and a link to it from the previous node.
-            AppendNoOpNode("Branch");
+            AppendNoOpNode($"JumpTo {jumpDestName}");
 
             // Add the branching link to a branch target.
-            var destination = _namedNodes[branchDestName];
-            EstablishLink(Supplier, destination, ifName, ifCondition, reflexKeys);
+            var destination = _namedNodes[jumpDestName];
+            EstablishLink(Consumer, destination, ifName, ifCondition, reflexKeys);
 
             // Add a no-op node to consume the conditional continuation link.
             // The opposite condition needs the same triggers.
-            AppendNoOpNode("NoOp", "Not " + ifName, () => !ifCondition(), reflexKeys);
+            AppendNoOpNode("Jump NoOp", "Not " + ifName, c => !ifCondition(c), reflexKeys);
 
             return this;
         }
 
-        protected InstructionBuilderBase AddIfThen(string ifName, Func<bool> ifCondition, string thenName, Action<IUnityContainer> thenBehavior, params string[] reflexKeys)
+        protected InstructionBuilderBase AddIfThen(string ifName, Func<IUnityContainer, bool> ifCondition, string thenName, Action<IUnityContainer> thenBehavior, params string[] reflexKeys)
         {
             AppendConditionalActionNode(thenName, thenBehavior, ifName, ifCondition, reflexKeys);
 
             // Add the no-op node to tie up both links.
-            AppendNoOpNode("NoOp");
+            AppendNoOpNode("IfThen NoOp");
 
             // Add the by-pass link to skip over the THEN action.
-            EstablishLink(PreviousSupplier, Consumer, "Not " + ifName, () => !ifCondition(), reflexKeys);
+            EstablishLink(PreviousSupplier, Consumer, "Not " + ifName, c => !ifCondition(c), reflexKeys);
 
             return this;
         }
 
-        protected InstructionBuilderBase AddIfThenElse(string ifName, Func<bool> ifCondition, string thenName, Action<IUnityContainer> thenBehavior, string elseName, Action<IUnityContainer> elseBehavior, params string[] reflexKeys)
+        protected InstructionBuilderBase AddIfThenElse(string ifName, Func<IUnityContainer, bool> ifCondition, string thenName, Action<IUnityContainer> thenBehavior, string elseName, Action<IUnityContainer> elseBehavior, params string[] reflexKeys)
         {
             AppendConditionalActionNode(thenName, thenBehavior, ifName, ifCondition, reflexKeys);
 
             // Add the no-op node to tie up both links.
-            var noOp = AppendNoOpNode("NoOp");
+            var noOp = AppendNoOpNode("IfThenElse NoOp");
 
             // Restore references in order to add another linked node from the same supplier.
             Consumer = PreviousSupplier;
-            AppendConditionalActionNode(elseName, elseBehavior, "Not " + ifName, () => !ifCondition(), reflexKeys);
+            AppendConditionalActionNode(elseName, elseBehavior, "Not " + ifName, c => !ifCondition(c), reflexKeys);
 
             // Now add a link from the ELSE node to the no-op terminal node.
             EstablishLink(Consumer, noOp);
@@ -238,11 +273,18 @@ namespace Sequentials.Builders
         /// <param name="finishCondition"></param>
         /// <param name="reflexKeys"></param>
         /// <returns></returns>
-        protected Sequence AddFinish(string finishName = null, Func<bool> finishCondition = null, params string[] reflexKeys)
+        protected Sequence AddFinish(string finishName = null, Func<IUnityContainer, bool> finishCondition = null, params string[] reflexKeys)
         {
-            _finishName = finishName;
-            _finishCondition = finishCondition;
-            _finishReflexKeys = reflexKeys;
+            if (_finishBinder == null)
+            {
+                _finishBinder = new LinkBinder();
+            }
+
+            _finishBinder.GuardName = finishName;
+            _finishBinder.GuardCondition = finishCondition;
+            _finishBinder.ReflexKeys = reflexKeys;
+            _finishBinder.LinkSupplier = Consumer;
+            
             return Sequence;
         }
 
@@ -282,7 +324,7 @@ namespace Sequentials.Builders
             return Consumer;
         }
 
-        internal ActionNode AppendConditionalActionNode(string actionName, Action<IUnityContainer> action, string conditionName, Func<bool> condition, params string[] reflexKeys)
+        internal ActionNode AppendConditionalActionNode(string actionName, Action<IUnityContainer> action, string conditionName, Func<IUnityContainer, bool> condition, params string[] reflexKeys)
         {
             PreviousSupplier = Supplier;
             Supplier = Consumer;
@@ -295,7 +337,7 @@ namespace Sequentials.Builders
         }
 
 
-        internal ActionNode AppendNoOpNode(string nodeName, string conditionName = null, Func<bool> condition = null, params string[] reflexKeys)
+        internal ActionNode AppendNoOpNode(string nodeName, string conditionName = null, Func<IUnityContainer, bool> condition = null, params string[] reflexKeys)
         {
             PreviousSupplier = Supplier;
             Supplier = Consumer;
@@ -306,12 +348,12 @@ namespace Sequentials.Builders
             return Consumer;
         }
 
-        internal void EstablishLink(State fromState, State toState, string conditionName = null, Func<bool> condition = null, params string[] reflexKeys)
+        internal void EstablishLink(State fromState, State toState, string conditionName = null, Func<IUnityContainer, bool> condition = null, params string[] reflexKeys)
         {
             var binder = new Binder() { FromState = fromState, ToState = toState, ReflexKeys = reflexKeys };
             if (condition != null)
             {
-                binder.Guard = new Constraint(conditionName, condition, _logger);
+                binder.Guard = new Constraint<IUnityContainer>(conditionName, condition, Sequence.RuntimeContainer/*ConstraintTransform*/, _logger);
             }
 
             _linkBinders.Add(binder);

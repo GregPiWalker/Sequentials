@@ -29,29 +29,29 @@ namespace Sequentials
             return machine;
         }
 
-        /// <summary>
-        /// Create a partially asynchronous Sequence.  A scheduler with a dedicated background thread is instantiated for
-        /// internal triggers and signals.  UML behaviors (ENTRY, DO, EXIT, EFFECT) are executed synchronously on the same internal thread.
-        /// The scheduler serializes its workflow, but will operate asynchronously with respect to incoming trigger invocations.
-        /// </summary>
-        /// <param name="sequenceName">A name that identifies the Sequence.</param>
-        /// <param name="logger"></param>
-        /// <param name="externalSynchronizer">An optional object to synchronize the state machine's internal triggers and signals with other external threaded work.
-        /// If none is supplied, an internal object is used.</param>
-        /// <returns></returns>
-        public static Sequence CreateTriggerAsync(string sequenceName, ILog logger, object externalSynchronizer = null)
-        {
-            IUnityContainer container = new UnityContainer();
-            var triggerScheduler = new EventLoopScheduler((a) => { return new Thread(a) { Name = $"{sequenceName} Trigger Scheduler", IsBackground = true }; });
-            container.RegisterInstance(typeof(IScheduler), StateMachineBase.TriggerSchedulerKey, triggerScheduler, new ContainerControlledLifetimeManager());
-            if (externalSynchronizer != null)
-            {
-                container.RegisterInstance(StateMachineBase.GlobalSynchronizerKey, externalSynchronizer);
-            }
+        ///// <summary>
+        ///// Create a partially asynchronous Sequence.  A scheduler with a dedicated background thread is instantiated for
+        ///// internal triggers and signals.  UML behaviors (ENTRY, DO, EXIT, EFFECT) are executed synchronously on the same internal thread.
+        ///// The scheduler serializes its workflow, but will operate asynchronously with respect to incoming trigger invocations.
+        ///// </summary>
+        ///// <param name="sequenceName">A name that identifies the Sequence.</param>
+        ///// <param name="logger"></param>
+        ///// <param name="externalSynchronizer">An optional object to synchronize the state machine's internal triggers and signals with other external threaded work.
+        ///// If none is supplied, an internal object is used.</param>
+        ///// <returns></returns>
+        //public static Sequence CreateTriggerAsync(string sequenceName, ILog logger, object externalSynchronizer = null)
+        //{
+        //    IUnityContainer container = new UnityContainer();
+        //    var triggerScheduler = new EventLoopScheduler((a) => { return new Thread(a) { Name = $"{sequenceName} Trigger Scheduler", IsBackground = true }; });
+        //    container.RegisterInstance(typeof(IScheduler), StateMachineBase.TriggerSchedulerKey, triggerScheduler, new ContainerControlledLifetimeManager());
+        //    if (externalSynchronizer != null)
+        //    {
+        //        container.RegisterInstance(StateMachineBase.GlobalSynchronizerKey, externalSynchronizer);
+        //    }
 
-            var machine = new Sequence(sequenceName, container, logger);
-            return machine;
-        }
+        //    var machine = new Sequence(sequenceName, container, logger);
+        //    return machine;
+        //}
 
         /// <summary>
         /// Create a partially asynchronous Sequence.  A scheduler with a dedicated background thread is instantiated for

@@ -10,6 +10,7 @@ using System.Reactive.Concurrency;
 using System.Threading;
 using System.Reflection;
 using CleanMachine.Behavioral.Behaviors;
+using System.Threading.Tasks;
 
 namespace Sequentials
 {
@@ -93,7 +94,6 @@ namespace Sequentials
 
                 //CompleteAssembly();
 
-                CurrentNode = InitialNode;
                 State = SequenceState.Running;
                 SignalAsync(new DataWaypoint(this, nameof(Run)));
             }
@@ -128,6 +128,32 @@ namespace Sequentials
         }
 
         /// <summary>
+        /// Asynchronously signal this machine to stimulate any passive transitions that exit the current state.
+        /// If a Behavior scheduler is available, the signal will be sent to it.  Otherwise, Task.Run() is used.
+        /// Passive transitions do not have a Trigger.
+        /// </summary>
+        /// <param name="signalSource"></param>
+        /// <returns></returns>
+        public override async Task<bool> SignalAsync(DataWaypoint signalSource)
+        {
+            //if (BehaviorScheduler == null)
+            //{
+            //    return Task.Run(() => Signal(signalSource)).Result;
+            //}
+            //else
+            //{
+            TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
+            BehaviorScheduler.Schedule(signalSource, (_, t) =>
+            {
+                tcs.SetResult(Signal(t));
+                return new BlankDisposable();
+            });
+
+            return tcs.Task.Result;
+            //}
+        }
+
+        /// <summary>
         /// Create the Initial and Final nodes.
         /// </summary>
         internal protected void Initialize(string finishName = null, Func<bool> finishCondition = null, IEnumerable<Func<IUnityContainer, TriggerBase>> finishStimuli = null)
@@ -150,6 +176,7 @@ namespace Sequentials
             // Add an initial node that has no action to perform. NOTE: no inbound links here.
             InitialNode = new ActionNode(InitialNodeName, Name, Logger, RuntimeContainer, _abortTokenSource.Token);
             AddNode(InitialNode);
+            SetInitialState(InitialNode.Name);
 
             FinalNode = new ActionNode(FinalNodeName, Name, Logger, RuntimeContainer, _abortTokenSource.Token);
             AddNode(FinalNode);
@@ -160,7 +187,7 @@ namespace Sequentials
         {
             Nodes[node.Uid] = node;
             _states.Add(node);
-            //node.EnteredInternal += HandleStateEnteredInternal;
+            node.EnteredInternal += HandleStateEnteredInternal;
             //node.Entered += HandleStateEntered;
             //node.Exited += HandleStateExited;
         }
@@ -182,7 +209,8 @@ namespace Sequentials
             abort.GlobalSynchronizer = _synchronizer;
             abort.Guard = new Constraint(Stereotypes.Abort.ToString(), _abortCondition, Logger);
 
-            abort.SucceededInternal += HandleLinkSucceededInternal;
+            //abort.SucceededInternal += HandleLinkSucceededInternal;
+            abort.SucceededInternal += HandleTransitionSucceededInternal;
         }
 
         internal protected void SetRequiredLinks(ActionNode node, IConstraint exitGuard, IEnumerable<Func<IUnityContainer, TriggerBase>> exitStimuli)
@@ -205,7 +233,8 @@ namespace Sequentials
                 exit.AddTrigger(stim.Invoke(RuntimeContainer));
             }
 
-            exit.SucceededInternal += HandleLinkSucceededInternal;
+            //exit.SucceededInternal += HandleLinkSucceededInternal;
+            exit.SucceededInternal += HandleTransitionSucceededInternal;
         }
 
         internal protected void SetTerminalLink(ActionNode node, IConstraint finishGuard, IEnumerable<Func<IUnityContainer, TriggerBase>> finishStimuli)
@@ -225,7 +254,8 @@ namespace Sequentials
                 finish.AddTrigger(stim.Invoke(RuntimeContainer));
             }
 
-            finish.SucceededInternal += HandleLinkSucceededInternal;
+            //finish.SucceededInternal += HandleLinkSucceededInternal;
+            finish.SucceededInternal += HandleTransitionSucceededInternal;
         }
 
         internal protected void SetContinueLink(ActionNode fromNode, ActionNode toNode, IConstraint continueGuard, IEnumerable<Func<IUnityContainer, TriggerBase>> stimuli)
@@ -247,7 +277,8 @@ namespace Sequentials
                 @continue.AddTrigger(stim.Invoke(RuntimeContainer));
             }
 
-            @continue.SucceededInternal += HandleLinkSucceededInternal;
+            //@continue.SucceededInternal += HandleLinkSucceededInternal;
+            @continue.SucceededInternal += HandleTransitionSucceededInternal;
         }
 
         protected virtual void Dispose(bool disposing)
@@ -283,11 +314,15 @@ namespace Sequentials
 
             if (result = TryAbort(tripArgs))
             {
-
+                RaiseAborted();
             }
             else if (result = TryExit(tripArgs))
             {
-
+                RaiseExited();
+            }
+            else if (result = TryFinish(tripArgs))
+            {
+                RaiseFinished();
             }
             else if (result = TryContinue(tripArgs))
             {
@@ -304,12 +339,32 @@ namespace Sequentials
 
         protected bool TryAbort(TripEventArgs tripArgs)
         {
+            if (CurrentNode.AbortLink == null)
+            {
+                return false;
+            }
+
             return CurrentNode.AbortLink.AttemptTraverse(tripArgs);
         }
 
         protected bool TryExit(TripEventArgs tripArgs)
         {
+            if (CurrentNode.ExitLink == null)
+            {
+                return false;
+            }
+
             return CurrentNode.ExitLink.AttemptTraverse(tripArgs);
+        }
+
+        protected bool TryFinish(TripEventArgs tripArgs)
+        {
+            if (CurrentNode.FinishLink == null)
+            {
+                return false;
+            }
+
+            return CurrentNode.FinishLink.AttemptTraverse(tripArgs);
         }
 
         protected bool TryContinue(TripEventArgs tripArgs)
@@ -370,26 +425,23 @@ namespace Sequentials
             if (!state.IsCurrentState)
             {
                 //TODO: log
+                return;
             }
 
             if (_abortCondition())
             {
-                //jump to final state.
+                //log it
                 // set aborted state.
                 // raise aborted event.
             }
             else
             {
                 state.Settle(args);
-                StimulateUnsafe(args);
+
+                // Schedule a new unit of work so that the call stack doesn't grow
+                // without bound.
+                BehaviorScheduler.Schedule(args, (_, t) => StimulateUnsafe(args));
             }
-        }
-
-        private void HandleLinkSucceededInternal(object sender, TripEventArgs args)
-        {
-            throw new NotImplementedException("Lookie here!");
-
-            //Proceed();
         }
 
         //protected override void CreateStates(IEnumerable<string> stateNames)
@@ -403,6 +455,13 @@ namespace Sequentials
         /// <param name="args"></param>
         protected override void OnStateChanged(TripEventArgs args)
         {
+            CurrentNode = _currentState as ActionNode;
+
+            if (ActionExecuted == null)
+            {
+                return;
+            }
+
             var state = args.FindLastState();
             try
             {
@@ -412,6 +471,42 @@ namespace Sequentials
             catch (Exception ex)
             {
                 Logger.Error($"{ex.GetType().Name} during '{nameof(ActionExecuted)}' event from {Name} sequence.", ex);
+            }
+        }
+
+        private void RaiseFinished()
+        {
+            try
+            {
+                Finished?.Invoke(this, null);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"{ex.GetType().Name} during '{nameof(Finished)}' event from {Name} sequence.", ex);
+            }
+        }
+
+        private void RaiseExited()
+        {
+            try
+            {
+                Exited?.Invoke(this, null);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"{ex.GetType().Name} during '{nameof(Exited)}' event from {Name} sequence.", ex);
+            }
+        }
+
+        private void RaiseAborted()
+        {
+            try
+            {
+                Aborted?.Invoke(this, null);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"{ex.GetType().Name} during '{nameof(Aborted)}' event from {Name} sequence.", ex);
             }
         }
 

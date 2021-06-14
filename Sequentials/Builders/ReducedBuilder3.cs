@@ -1,4 +1,5 @@
 ﻿using System;
+using Unity;
 
 namespace Sequentials.Builders
 {
@@ -13,11 +14,11 @@ namespace Sequentials.Builders
             TakeFrom(other);
         }
 
-        public void ExitAnytime(string exitName, Func<bool> exitCondition, params string[] reflexKeys)
+        public void ExitAnytime(string exitName, Func<IUnityContainer, bool> exitCondition, params string[] reflexKeys)
         {
-            _finishName = exitName;
-            _finishCondition = exitCondition;
-            _finishReflexKeys = reflexKeys;
+            _exitBinder.ReflexKeys = reflexKeys;
+            _exitBinder.GuardName = exitName;
+            _exitBinder.GuardCondition = exitCondition;
         }
     }
 }
