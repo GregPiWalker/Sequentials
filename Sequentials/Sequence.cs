@@ -24,7 +24,7 @@ namespace Sequentials
     //    protected ActivityChain UnderConstruction { get; set; }
     //}
 
-    public class Sequence : StateMachineBase, IDisposable
+    public class Sequence : StateMachineBase
     {
         protected const string InitialNodeName = "Initial";
         protected const string NoopNodeName = "NoOp";
@@ -35,7 +35,6 @@ namespace Sequentials
         protected ActionNode _lastAttachedNode;
         protected ActionNode _detachedNode;
         private readonly TripEventArgs signalArgs = new TripEventArgs();
-        private bool _isDisposed;
 
         public Sequence(string name, IUnityContainer runtimeContainer, ILog logger)
             : base(name, runtimeContainer, logger)
@@ -68,13 +67,6 @@ namespace Sequentials
         public SequenceResult Result { get; protected set; }
 
         internal protected Dictionary<Guid, ActionNode> Nodes { get; } = new Dictionary<Guid, ActionNode>();
-
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
-        }
 
         public void Run()
         {
@@ -209,7 +201,6 @@ namespace Sequentials
             abort.GlobalSynchronizer = _synchronizer;
             abort.Guard = new Constraint(Stereotypes.Abort.ToString(), _abortCondition, Logger);
 
-            //abort.SucceededInternal += HandleLinkSucceededInternal;
             abort.SucceededInternal += HandleTransitionSucceededInternal;
         }
 
@@ -233,7 +224,6 @@ namespace Sequentials
                 exit.AddTrigger(stim.Invoke(RuntimeContainer));
             }
 
-            //exit.SucceededInternal += HandleLinkSucceededInternal;
             exit.SucceededInternal += HandleTransitionSucceededInternal;
         }
 
@@ -254,7 +244,6 @@ namespace Sequentials
                 finish.AddTrigger(stim.Invoke(RuntimeContainer));
             }
 
-            //finish.SucceededInternal += HandleLinkSucceededInternal;
             finish.SucceededInternal += HandleTransitionSucceededInternal;
         }
 
@@ -277,23 +266,7 @@ namespace Sequentials
                 @continue.AddTrigger(stim.Invoke(RuntimeContainer));
             }
 
-            //@continue.SucceededInternal += HandleLinkSucceededInternal;
             @continue.SucceededInternal += HandleTransitionSucceededInternal;
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!_isDisposed)
-            {
-                if (disposing)
-                {
-                    // TODO: dispose managed state (managed objects)
-                }
-
-                // TODO: free unmanaged resources (unmanaged objects) and override finalizer
-                // TODO: set large fields to null
-                _isDisposed = true;
-            }
         }
 
         /// <summary>

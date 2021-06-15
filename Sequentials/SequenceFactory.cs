@@ -14,6 +14,7 @@ namespace Sequentials
         /// internal transitions.  Another scheduler with a dedicated background thread is instantiated for running
         /// the following behaviors: ENTRY, DO, EXIT, EFFECT.  Both schedulers serialize their workflow, but will
         /// operate asynchronously with respect to each other, as well as with respect to incoming trigger invocations.
+        /// Both schedulers' life-cycles are managed by the Unity container, so disposal is automatic.
         /// </summary>
         /// <param name="sequenceName">A name that identifies the Sequence.</param>
         /// <param name="logger"></param>
@@ -22,8 +23,12 @@ namespace Sequentials
         {
             IUnityContainer container = new UnityContainer();
             var triggerScheduler = new EventLoopScheduler((a) => { return new Thread(a) { Name = $"{sequenceName} Trigger Scheduler", IsBackground = true }; });
+            // Scheduling this dummy operation forces the underlying thread to be instantiated now.
+            triggerScheduler.Schedule(() => { bool dummy = true; });
             container.RegisterInstance(typeof(IScheduler), StateMachineBase.TriggerSchedulerKey, triggerScheduler, new ContainerControlledLifetimeManager());
             var behaviorScheduler = new EventLoopScheduler((a) => { return new Thread(a) { Name = $"{sequenceName} Action Scheduler", IsBackground = true }; });
+            // Scheduling this dummy operation forces the underlying thread to be instantiated now.
+            behaviorScheduler.Schedule(() => { bool dummy = true; });
             container.RegisterInstance(typeof(IScheduler), StateMachineBase.BehaviorSchedulerKey, behaviorScheduler, new ContainerControlledLifetimeManager());
             var machine = new Sequence(sequenceName, container, logger);
             return machine;
@@ -33,6 +38,7 @@ namespace Sequentials
         ///// Create a partially asynchronous Sequence.  A scheduler with a dedicated background thread is instantiated for
         ///// internal triggers and signals.  UML behaviors (ENTRY, DO, EXIT, EFFECT) are executed synchronously on the same internal thread.
         ///// The scheduler serializes its workflow, but will operate asynchronously with respect to incoming trigger invocations.
+        ///// The scheduler's life-cycle is managed by the Unity container, so disposal is automatic.
         ///// </summary>
         ///// <param name="sequenceName">A name that identifies the Sequence.</param>
         ///// <param name="logger"></param>
@@ -43,7 +49,9 @@ namespace Sequentials
         //{
         //    IUnityContainer container = new UnityContainer();
         //    var triggerScheduler = new EventLoopScheduler((a) => { return new Thread(a) { Name = $"{sequenceName} Trigger Scheduler", IsBackground = true }; });
-        //    container.RegisterInstance(typeof(IScheduler), StateMachineBase.TriggerSchedulerKey, triggerScheduler, new ContainerControlledLifetimeManager());
+        //    // Scheduling this dummy operation forces the underlying thread to be instantiated now.
+        //    triggerScheduler.Schedule(() => { bool dummy = true; });
+        //    container.RegisterInstance(typeof(IScheduler), StateMachineBase.TriggerSchedulerKey, trigger Scheduler, new ExternallyControlledLifetimeManager());
         //    if (externalSynchronizer != null)
         //    {
         //        container.RegisterInstance(StateMachineBase.GlobalSynchronizerKey, externalSynchronizer);
@@ -58,6 +66,7 @@ namespace Sequentials
         /// UML behaviors (ENTRY, DO, EXIT, EFFECT).  Internal triggers and signals are executed synchronously on the same thread
         /// as the triggers' event handlers.
         /// The scheduler serializes its workflow, but will operate asynchronously with respect to incoming trigger invocations.
+        /// The scheduler's life-cycle is managed by the Unity container, so disposal is automatic.
         /// </summary>
         /// <param name="sequenceName">A name that identifies the Sequence.</param>
         /// <param name="logger"></param>
@@ -68,6 +77,8 @@ namespace Sequentials
         {
             IUnityContainer container = new UnityContainer();
             var behaviorScheduler = new EventLoopScheduler((a) => { return new Thread(a) { Name = $"{sequenceName} Action Scheduler", IsBackground = true }; });
+            // Scheduling this dummy operation forces the underlying thread to be instantiated now.
+            behaviorScheduler.Schedule(() => { bool dummy = true; });
             container.RegisterInstance(typeof(IScheduler), StateMachineBase.BehaviorSchedulerKey, behaviorScheduler, new ContainerControlledLifetimeManager());
             if (externalSynchronizer != null)
             {

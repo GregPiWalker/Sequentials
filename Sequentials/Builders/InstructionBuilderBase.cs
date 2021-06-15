@@ -123,7 +123,15 @@ namespace Sequentials.Builders
                                       select Stimuli[key];
                     Sequence.SetContinueLink(from as ActionNode, to as ActionNode, binder.Guard, contStimuli);
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"{ex.GetType().Name} while creating Continue links in {nameof(CompleteBuild)}:  {ex.Message}", ex);
+                throw ex;
+            }
 
+            try
+            {
                 var exitKeys = _exitBinder.ReflexKeys ?? new string[] { };
                 var exitStimuli = from key in exitKeys
                                   where Stimuli.ContainsKey(key)
@@ -136,7 +144,15 @@ namespace Sequentials.Builders
                         : new Constraint<IUnityContainer>(_exitBinder.GuardName, _exitBinder.GuardCondition, Sequence.RuntimeContainer, Sequence.Logger);
                     Sequence.SetRequiredLinks(node, exitGuard, exitStimuli);
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"{ex.GetType().Name} while creating Exit links in {nameof(CompleteBuild)}:  {ex.Message}", ex);
+                throw ex;
+            }
 
+            try
+            {
                 var finishKeys = _finishBinder.ReflexKeys ?? new string[] { };
                 var finishStimuli = from key in finishKeys
                                     where Stimuli.ContainsKey(key)
@@ -151,7 +167,7 @@ namespace Sequentials.Builders
             }
             catch (Exception ex)
             {
-                _logger.Error($"{ex.GetType().Name} during {nameof(CompleteBuild)}:  {ex.Message}", ex);
+                _logger.Error($"{ex.GetType().Name} while creating Finish links in {nameof(CompleteBuild)}:  {ex.Message}", ex);
                 throw ex;
             }
         }
