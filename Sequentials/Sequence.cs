@@ -471,11 +471,6 @@ namespace Sequentials
             }
         }
 
-        //protected override void CreateStates(IEnumerable<string> stateNames)
-        //{
-        //    throw new NotImplementedException();
-        //}
-
         /// <summary>
         /// Raise the <see cref="ActionExecuted"/> event instead of the <see cref="StateChanged"/> event.
         /// </summary>
