@@ -50,8 +50,9 @@ namespace Sequentials
         /// </summary>
         public event EventHandler<string> ActionExecuted;
 
-        public event EventHandler Finished;
+        public event EventHandler<SequenceResult> Finished;
         public event EventHandler Exited;
+        public event EventHandler Completed;
         public event EventHandler Aborted;
 
         public Phase BuildPhase { get; protected set; }
@@ -67,6 +68,8 @@ namespace Sequentials
         public SequenceResult Result { get; protected set; }
 
         internal protected Dictionary<Guid, ActionNode> Nodes { get; } = new Dictionary<Guid, ActionNode>();
+
+        internal protected CancellationToken AbortToken => _abortTokenSource.Token;
 
         public void Run()
         {
@@ -116,6 +119,21 @@ namespace Sequentials
 
                 var resumeArgs = new TripEventArgs(_currentState.VisitIdentifier, new DataWaypoint(this, nameof(Resume)));
                 StimulateUnsafe(resumeArgs);
+            }
+        }
+
+        public void Abort()
+        {
+                _abortTokenSource.Cancel();
+            lock (_runLock)
+            {
+                //if (State != SequenceState.)
+                //{
+                //    return;
+                //}
+
+                var abortArgs = new TripEventArgs(_currentState.VisitIdentifier, new DataWaypoint(this, nameof(Abort)));
+                StimulateUnsafe(abortArgs);
             }
         }
 
@@ -172,7 +190,33 @@ namespace Sequentials
 
             FinalNode = new ActionNode(FinalNodeName, Name, Logger, RuntimeContainer, _abortTokenSource.Token);
             AddNode(FinalNode);
-            FinalNode.SetEntryBehavior(new Behavior(nameof(OnFinished), (c) => OnFinished(c)));
+            //FinalNode.SetEntryBehavior(new Behavior(nameof(OnFinished), (c) => OnFinished(c)));
+            FinalNode.EnteredInternal += HandleFinalNodeEntered;
+        }
+
+        private void HandleFinalNodeEntered(object sender, TripEventArgs e)
+        {
+            var finalCause = e.FindLastTransition().Stereotype;
+            switch (finalCause.ToEnum<Stereotypes>())
+            {
+                case Stereotypes.Exit:
+                    Result = SequenceResult.Exited;
+                    RaiseExited();
+                    break;
+
+                case Stereotypes.Abort:
+                    Result = SequenceResult.Aborted;
+                    RaiseAborted();
+                    break;
+
+                case Stereotypes.Finish:
+                case Stereotypes.Continue:
+                    Result = SequenceResult.Completed;
+                    RaiseCompleted();
+                    break;
+            }
+
+            RaiseFinished(Result);
         }
 
         internal protected void AddNode(ActionNode node)
@@ -204,7 +248,7 @@ namespace Sequentials
             abort.SucceededInternal += HandleTransitionSucceededInternal;
         }
 
-        internal protected void SetRequiredLinks(ActionNode node, IConstraint exitGuard, IEnumerable<Func<IUnityContainer, TriggerBase>> exitStimuli)
+        internal protected void SetRequiredLinks(ActionNode node, IConstraint exitGuard, IEnumerable<Func<IUnityContainer, TriggerBase>> globalExitStimuli, IEnumerable<Func<IUnityContainer, TriggerBase>> localExitStimuli)
         {
             SetRequiredLinks(node);
 
@@ -219,7 +263,14 @@ namespace Sequentials
             exit.GlobalSynchronizer = _synchronizer;
             exit.Guard = exitGuard;
 
-            foreach (var stim in exitStimuli)
+            // Add the globally configured Exit stimuli.
+            foreach (var stim in globalExitStimuli)
+            {
+                exit.AddTrigger(stim.Invoke(RuntimeContainer));
+            }
+
+            // Now add the stimuli inherited from this node's continuations.
+            foreach (var stim in localExitStimuli)
             {
                 exit.AddTrigger(stim.Invoke(RuntimeContainer));
             }
@@ -287,15 +338,15 @@ namespace Sequentials
 
             if (result = TryAbort(tripArgs))
             {
-                RaiseAborted();
+                //RaiseAborted();
             }
             else if (result = TryExit(tripArgs))
             {
-                RaiseExited();
+                //RaiseExited();
             }
             else if (result = TryFinish(tripArgs))
             {
-                RaiseFinished();
+                //RaiseFinished();
             }
             else if (result = TryContinue(tripArgs))
             {
@@ -411,9 +462,12 @@ namespace Sequentials
             {
                 state.Settle(args);
 
-                // Schedule a new unit of work so that the call stack doesn't grow
-                // without bound.
-                BehaviorScheduler.Schedule(args, (_, t) => StimulateUnsafe(args));
+                if (state != FinalNode)
+                {
+                    // Schedule a new unit of work so that the call stack doesn't grow
+                    // without bound.
+                    BehaviorScheduler.Schedule(args, (_, t) => StimulateUnsafe(args));
+                }
             }
         }
 
@@ -447,15 +501,27 @@ namespace Sequentials
             }
         }
 
-        private void RaiseFinished()
+        private void RaiseFinished(SequenceResult result)
         {
             try
             {
-                Finished?.Invoke(this, null);
+                Finished?.Invoke(this, result);
             }
             catch (Exception ex)
             {
                 Logger.Error($"{ex.GetType().Name} during '{nameof(Finished)}' event from {Name} sequence.", ex);
+            }
+        }
+
+        private void RaiseCompleted()
+        {
+            try
+            {
+                Completed?.Invoke(this, null);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"{ex.GetType().Name} during '{nameof(Completed)}' event from {Name} sequence.", ex);
             }
         }
 

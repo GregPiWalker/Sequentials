@@ -1,6 +1,6 @@
-﻿using CleanMachine;
-using Unity;
+﻿using Unity;
 using System;
+using CleanMachine;
 
 namespace Sequentials.Builders
 {

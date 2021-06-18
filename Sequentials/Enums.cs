@@ -29,7 +29,7 @@ namespace Sequentials
     public enum SequenceResult
     {
         Unknown,
-        Finished,
+        Completed,
         Exited,
         Aborted,
     }
