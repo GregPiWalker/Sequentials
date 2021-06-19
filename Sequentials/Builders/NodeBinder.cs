@@ -16,5 +16,7 @@ namespace Sequentials.Builders
         public List<string> ReflexKeys { get; } = new List<string>();
 
         public ActionNode Node { get; set; }
+
+        //public string PreferredName { get; set; }
     }
 }

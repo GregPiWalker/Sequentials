@@ -260,15 +260,16 @@ namespace Sequentials.Builders
         protected InstructionBuilderBase AddJumpIf(string jumpDestName, string ifName, Func<IUnityContainer, bool> ifCondition, params string[] reflexKeys)
         {
             // Add the branch node and a link to it from the previous node.
-            AppendNoOpNode($"JumpTo {jumpDestName}");
+            var node = AppendNoOpNode($"JumpTo {jumpDestName}");
+            node.Stereotype = Stereotypes.Decision.ToString();
 
-            // Add the branching link to a branch target.
+            // Add the jumping link to a jump target.
             var destination = _namedNodes[jumpDestName];
             EstablishLink(Consumer, destination, ifName, ifCondition, reflexKeys);
 
             // Add a no-op node to consume the conditional continuation link.
             // The opposite condition needs the same triggers.
-            AppendNoOpNode("Jump NoOp", "Not " + ifName, c => !ifCondition(c), reflexKeys);
+            AppendNoOpNode(/*"Jump NoOp"*/"Not " + ifName, "Not " + ifName, c => !ifCondition(c), reflexKeys);
 
             return this;
         }
@@ -288,6 +289,8 @@ namespace Sequentials.Builders
 
         protected InstructionBuilderBase AddIfThenElse(string ifName, Func<IUnityContainer, bool> ifCondition, string thenName, Action<IUnityContainer> thenBehavior, string elseName, Action<IUnityContainer> elseBehavior, params string[] reflexKeys)
         {
+            //TODO: make sure this stereotype change is correct:
+            Consumer.Stereotype = Stereotypes.Decision.ToString();
             AppendConditionalActionNode(thenName, thenBehavior, ifName, ifCondition, reflexKeys);
 
             // Add the no-op node to tie up both links.
@@ -331,9 +334,14 @@ namespace Sequentials.Builders
 
         internal ActionNode CreateNode(string nodeName, Action<IUnityContainer> doBehavior = null)
         {
-            var node = new ActionNode(nodeName, Sequence.Name, _logger, Sequence.RuntimeContainer, Sequence.AbortToken);
-            if (doBehavior != null)
+            ActionNode node;
+            if (doBehavior == null)
             {
+                node = new ActionNode(nodeName, Stereotypes.NoOp.ToString(), Sequence.Name, _logger, Sequence.RuntimeContainer, Sequence.AbortToken);
+            }
+            else
+            {
+                node = new ActionNode(nodeName, Sequence.Name, _logger, Sequence.RuntimeContainer, Sequence.AbortToken);
                 node.AddDoBehavior(new Behavior(nodeName, doBehavior));
             }
 
@@ -372,6 +380,11 @@ namespace Sequentials.Builders
             Consumer = CreateNode(actionName, action);
             _namedNodes.Add(Consumer.Name, Consumer);
 
+            if (Stereotypes.NoOp.ToString().Equals(Supplier.Stereotype))
+            {
+                UpdateNodeName(Supplier, conditionName);
+            }
+
             EstablishLink(Supplier, Consumer, conditionName, condition, reflexKeys);
 
             return Consumer;
@@ -383,6 +396,11 @@ namespace Sequentials.Builders
             PreviousSupplier = Supplier;
             Supplier = Consumer;
             Consumer = CreateNode(nodeName);
+
+            if (!string.IsNullOrEmpty(conditionName) && Stereotypes.NoOp.ToString().Equals(Supplier.Stereotype))
+            {
+                UpdateNodeName(Supplier, conditionName);
+            }
 
             EstablishLink(Supplier, Consumer, conditionName, condition, reflexKeys);
 
@@ -398,6 +416,22 @@ namespace Sequentials.Builders
             }
 
             _linkBinders.Add(binder);
+        }
+
+        /// <summary>
+        /// This just helps No-Op nodes have a descriptive name when they precede a conditional continuation.
+        /// </summary>
+        /// <param name="node"></param>
+        /// <param name="newName"></param>
+        private void UpdateNodeName(ActionNode node, string newName)
+        {
+            string oldName = node.Name;
+            node.ChangeName("Wait[" + newName + "]");
+            if (_namedNodes.ContainsKey(oldName) && _namedNodes[oldName] == node)
+            {
+                _namedNodes.Remove(oldName);
+                _namedNodes.Add(node.Name, Supplier);
+            }
         }
 
         /// <summary>

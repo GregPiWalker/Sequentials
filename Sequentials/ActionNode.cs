@@ -16,7 +16,12 @@ namespace Sequentials
         private static readonly LinkComparer Comparer = new LinkComparer();
 
         public ActionNode(string name, string context, ILog logger, IUnityContainer runtimeContainer, CancellationToken abortToken)
-            : base(name, runtimeContainer, logger)
+            : this(name, string.Empty, context, logger, runtimeContainer, abortToken)
+        {
+        }
+
+        public ActionNode(string name, string stereotype, string context, ILog logger, IUnityContainer runtimeContainer, CancellationToken abortToken)
+            : base(name, stereotype, runtimeContainer, logger)
         {
             _context = context;
             AbortToken = abortToken;
@@ -105,6 +110,16 @@ namespace Sequentials
             link.Connect(this, consumer);
 
             return link;
+        }
+
+        internal protected void ChangeName(string newName)
+        {
+            if (string.IsNullOrEmpty(newName))
+            {
+                return;
+            }
+
+            Name = newName;
         }
 
         protected override void Settle(TripEventArgs tripArgs)

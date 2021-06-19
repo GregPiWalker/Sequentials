@@ -7,7 +7,9 @@ namespace Sequentials
         Exit,
         Abort,
         Finish,
-        Continue
+        Continue,
+        NoOp,
+        Decision
     }
 
     public enum TriggerKey

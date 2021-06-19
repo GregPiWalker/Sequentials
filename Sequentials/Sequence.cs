@@ -368,7 +368,7 @@ namespace Sequentials
                 return false;
             }
 
-            return CurrentNode.AbortLink.AttemptTraverse(tripArgs);
+            return CurrentNode.AbortLink.AttemptTransit(tripArgs);
         }
 
         protected bool TryExit(TripEventArgs tripArgs)
@@ -378,7 +378,7 @@ namespace Sequentials
                 return false;
             }
 
-            return CurrentNode.ExitLink.AttemptTraverse(tripArgs);
+            return CurrentNode.ExitLink.AttemptTransit(tripArgs);
         }
 
         protected bool TryFinish(TripEventArgs tripArgs)
@@ -388,7 +388,7 @@ namespace Sequentials
                 return false;
             }
 
-            return CurrentNode.FinishLink.AttemptTraverse(tripArgs);
+            return CurrentNode.FinishLink.AttemptTransit(tripArgs);
         }
 
         protected bool TryContinue(TripEventArgs tripArgs)
@@ -396,7 +396,7 @@ namespace Sequentials
             var continuations = CurrentNode.ContinueLinks;
             foreach (var continuation in continuations)
             {
-                if (continuation.AttemptTraverse(tripArgs))
+                if (continuation.AttemptTransit(tripArgs))
                 {
                     return true;
                 }
