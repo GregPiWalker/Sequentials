@@ -12,18 +12,16 @@ namespace Sequentials
 {
     public class ActionNode : BehavioralState
     {
-        protected string _context;
         private static readonly LinkComparer Comparer = new LinkComparer();
 
-        public ActionNode(string name, string context, ILog logger, IUnityContainer runtimeContainer, CancellationToken abortToken)
+        public ActionNode(string name, string context, Logger logger, IUnityContainer runtimeContainer, CancellationToken abortToken)
             : this(name, string.Empty, context, logger, runtimeContainer, abortToken)
         {
         }
 
-        public ActionNode(string name, string stereotype, string context, ILog logger, IUnityContainer runtimeContainer, CancellationToken abortToken)
-            : base(name, stereotype, runtimeContainer, logger)
+        public ActionNode(string name, string stereotype, string context, Logger logger, IUnityContainer runtimeContainer, CancellationToken abortToken)
+            : base(name, context, stereotype, runtimeContainer, logger)
         {
-            _context = context;
             AbortToken = abortToken;
             ValidateTrips = false;
             Uid = Guid.NewGuid();
@@ -90,6 +88,20 @@ namespace Sequentials
             return canExit;
         }
 
+        ///// <summary>
+        ///// Overridden so that Triggers are not enabled yet.
+        ///// </summary>
+        ///// <param name="tripArgs"></param>
+        //protected override void EndEntry(TripEventArgs tripArgs)
+        //{
+        //    OnEntered(tripArgs);
+
+        //    // Enabling of transition triggers will be delayed so that any DO behaviors have a chance
+        //    // to influence any late-bound triggers.
+
+        //    //TODO: enable non-lazy triggers here.
+        //}
+
         internal virtual Link CreateLinkTo(string context, string stereotype, ActionNode consumer)
         {
             var link = new Link(context, stereotype, consumer, _logger);
@@ -106,7 +118,6 @@ namespace Sequentials
                 FinishLink = link;
             }
 
-            AddTransition(link);
             link.Connect(this, consumer);
 
             return link;

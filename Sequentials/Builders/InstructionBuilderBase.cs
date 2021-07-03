@@ -14,7 +14,7 @@ namespace Sequentials.Builders
 {
     public abstract class InstructionBuilderBase
     {
-        protected ILog _logger;
+        protected Logger _logger;
         protected List<Binder> _linkBinders;
         protected List<NodeBinder> _nodeBinders;
         protected Dictionary<string, ActionNode> _namedNodes;
@@ -457,7 +457,7 @@ namespace Sequentials.Builders
                 stimuli[key] = (c) =>
                 {
                     IScheduler scheduler = c.TryGetInstance<IScheduler>(StateMachineBase.BehaviorSchedulerKey);
-                    ILog logger = c.TryGetTypeRegistration<ILog>();
+                    Logger logger = c.TryGetTypeRegistration<Logger>();
                     return new Trigger<TSource, TEventArgs>(evSource, evName, scheduler, logger);
                 };
             }
@@ -466,8 +466,35 @@ namespace Sequentials.Builders
                 stimuli[key] = (c) =>
                 {
                     IScheduler scheduler = c.TryGetInstance<IScheduler>(StateMachineBase.BehaviorSchedulerKey);
-                    ILog logger = c.TryGetTypeRegistration<ILog>();
+                    Logger logger = c.TryGetTypeRegistration<Logger>();
                     return new Trigger<TSource, TEventArgs>(evSource, evName, new Constraint<TEventArgs>(filterName, filter, logger), scheduler, logger);
+                };
+            }
+        }
+
+        protected static void AddLazyStimulus<TSource, TEventArgs>(Dictionary<string, Func<IUnityContainer, TriggerBase>> stimuli, string key, Func<TSource> evLazySource, string evName, Func<TEventArgs, bool> filter = null, string filterName = null) //where TEventArgs : EventArgs
+        {
+            if (stimuli.ContainsKey(key))
+            {
+                return;
+            }
+
+            if (filter == null)
+            {
+                stimuli[key] = (c) =>
+                {
+                    IScheduler scheduler = c.TryGetInstance<IScheduler>(StateMachineBase.BehaviorSchedulerKey);
+                    Logger logger = c.TryGetTypeRegistration<Logger>();
+                    return new Trigger<TSource, TEventArgs>(evLazySource, evName, scheduler, logger);
+                };
+            }
+            else
+            {
+                stimuli[key] = (c) =>
+                {
+                    IScheduler scheduler = c.TryGetInstance<IScheduler>(StateMachineBase.BehaviorSchedulerKey);
+                    Logger logger = c.TryGetTypeRegistration<Logger>();
+                    return new Trigger<TSource, TEventArgs>(evLazySource, evName, new Constraint<TEventArgs>(filterName, filter, logger), scheduler, logger);
                 };
             }
         }
@@ -496,7 +523,7 @@ namespace Sequentials.Builders
                 stimuli[key] = (c) =>
                 {
                     IScheduler scheduler = c.TryGetInstance<IScheduler>(StateMachineBase.BehaviorSchedulerKey);
-                    ILog logger = c.TryGetTypeRegistration<ILog>();
+                    Logger logger = c.TryGetTypeRegistration<Logger>();
                     return new DelegateTrigger<TSource, TDelegate, TEventArgs>(evSource, evName, scheduler, logger);
                 };
             }
@@ -505,7 +532,7 @@ namespace Sequentials.Builders
                 stimuli[key] = (c) =>
                 {
                     IScheduler scheduler = c.TryGetInstance<IScheduler>(StateMachineBase.BehaviorSchedulerKey);
-                    ILog logger = c.TryGetTypeRegistration<ILog>();
+                    Logger logger = c.TryGetTypeRegistration<Logger>();
                     return new DelegateTrigger<TSource, TDelegate, TEventArgs>(evSource, evName, new Constraint<TEventArgs>(filterName, filter, logger), scheduler, logger);
                 };
             }

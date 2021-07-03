@@ -8,14 +8,14 @@ namespace Sequentials
 {
     public class Link : Transition, IComparer<Link>
     {
-        public Link(string context, string stereotype, ActionNode consumer, ILog logger)
+        public Link(string context, string stereotype, ActionNode consumer, Logger logger)
             : base(context, stereotype, logger)
         {
             To = consumer;
             Editable = true;
         }
 
-        public Link(string context, string stereotype, ILog logger)
+        public Link(string context, string stereotype, Logger logger)
             : base(context, stereotype, logger)
         {
             Editable = true;

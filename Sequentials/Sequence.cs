@@ -46,7 +46,7 @@ namespace Sequentials
         }
 
         /// <summary>
-        /// 
+        /// TODO: rename this since not all nodes have actions.
         /// </summary>
         public event EventHandler<string> ActionExecuted;
 
@@ -475,20 +475,19 @@ namespace Sequentials
         /// Raise the <see cref="ActionExecuted"/> event instead of the <see cref="StateChanged"/> event.
         /// </summary>
         /// <param name="args"></param>
-        protected override void OnStateChanged(TripEventArgs args)
+        protected override void OnStateChanged(State previousState, TripEventArgs args)
         {
             CurrentNode = _currentState as ActionNode;
 
-            if (ActionExecuted == null)
+            if (ActionExecuted == null || CurrentNode == null)
             {
                 return;
             }
 
-            var state = args.FindLastState();
             try
             {
                 Logger.Debug($"{Name}:  raising '{nameof(ActionExecuted)}' event.");
-                ActionExecuted?.Invoke(this, state.Name);
+                ActionExecuted?.Invoke(this, CurrentNode.Name);
             }
             catch (Exception ex)
             {
