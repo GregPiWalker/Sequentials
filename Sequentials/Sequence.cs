@@ -50,9 +50,21 @@ namespace Sequentials
         /// </summary>
         public event EventHandler<string> ActionExecuted;
 
+        /// <summary>
+        /// Raised when the Sequence is totally finished, regardless of how it finished.
+        /// </summary>
         public event EventHandler<SequenceResult> Finished;
+        /// <summary>
+        /// Raised if the Sequence finished by exiting before completing.
+        /// </summary>
         public event EventHandler Exited;
+        /// <summary>
+        /// Raised if the Sequence finished by completing all its work.
+        /// </summary>
         public event EventHandler Completed;
+        /// <summary>
+        /// Raised if the Sequence finished by being aborted before completing.
+        /// </summary>
         public event EventHandler Aborted;
 
         public Phase BuildPhase { get; protected set; }
@@ -117,14 +129,15 @@ namespace Sequentials
                     return;
                 }
 
-                var resumeArgs = new TripEventArgs(_currentState.VisitIdentifier, new DataWaypoint(this, nameof(Resume)));
-                StimulateUnsafe(resumeArgs);
+                State = SequenceState.Running;
+
+                SignalAsync(new DataWaypoint(this, nameof(Resume)));
             }
         }
 
         public void Abort()
         {
-                _abortTokenSource.Cancel();
+            _abortTokenSource.Cancel();
             lock (_runLock)
             {
                 //if (State != SequenceState.)
@@ -132,8 +145,7 @@ namespace Sequentials
                 //    return;
                 //}
 
-                var abortArgs = new TripEventArgs(_currentState.VisitIdentifier, new DataWaypoint(this, nameof(Abort)));
-                StimulateUnsafe(abortArgs);
+                SignalAsync(new DataWaypoint(this, nameof(Abort)));
             }
         }
 
@@ -141,26 +153,29 @@ namespace Sequentials
         /// Asynchronously signal this machine to stimulate any passive transitions that exit the current state.
         /// If a Behavior scheduler is available, the signal will be sent to it.  Otherwise, Task.Run() is used.
         /// Passive transitions do not have a Trigger.
+        /// 
+        /// BehaviorScheduler is used in order to synchronize transits with any activity that may
+        /// be in progress.
         /// </summary>
         /// <param name="signalSource"></param>
         /// <returns></returns>
         public override async Task<bool> SignalAsync(DataWaypoint signalSource)
         {
-            //if (BehaviorScheduler == null)
-            //{
-            //    return Task.Run(() => Signal(signalSource)).Result;
-            //}
-            //else
-            //{
-            TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
-            BehaviorScheduler.Schedule(signalSource, (_, t) =>
+            if (BehaviorScheduler == null)
             {
-                tcs.SetResult(Signal(t));
-                return new BlankDisposable();
-            });
+                return await Task.Run(() => Signal(signalSource));
+            }
+            else
+            {
+                TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
+                BehaviorScheduler.Schedule(signalSource, (_, t) =>
+                {
+                    tcs.SetResult(Signal(t));
+                    return new BlankDisposable();
+                });
 
-            return tcs.Task.Result;
-            //}
+                return await tcs.Task;
+            }
         }
 
         /// <summary>
