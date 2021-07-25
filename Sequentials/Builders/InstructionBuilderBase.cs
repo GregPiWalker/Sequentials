@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Collections.Generic;
 using System.Reactive.Concurrency;
@@ -9,6 +10,7 @@ using CleanMachine.Behavioral.Behaviors;
 using Unity;
 using log4net;
 using CleanMachine.Interfaces;
+using System.ComponentModel;
 
 namespace Sequentials.Builders
 {
@@ -445,7 +447,7 @@ namespace Sequentials.Builders
         /// <param name="evName"></param>
         /// <param name="filter">a Func that will be given to an IConstraint in order to implement a filter for the Trigger.</param>
         /// <param name="filterName">A string name for the IConstraint used to implement the given filter.</param>
-        protected static void AddStimulus<TSource, TEventArgs>(Dictionary<string, Func<IUnityContainer, TriggerBase>> stimuli, string key, TSource evSource, string evName, Func<TEventArgs, bool> filter = null, string filterName = null) //where TEventArgs : EventArgs
+        protected static void AddStimulus<TSource, TEventArgs>(Dictionary<string, Func<IUnityContainer, TriggerBase>> stimuli, string key, TSource evSource, string evName, Func<TEventArgs, bool> filter = null, string filterName = null) where TSource : class //where TEventArgs : EventArgs
         {
             if (stimuli.ContainsKey(key))
             {
@@ -472,31 +474,19 @@ namespace Sequentials.Builders
             }
         }
 
-        protected static void AddLazyStimulus<TSource, TEventArgs>(Dictionary<string, Func<IUnityContainer, TriggerBase>> stimuli, string key, Func<TSource> evLazySource, string evName, Func<TEventArgs, bool> filter = null, string filterName = null) //where TEventArgs : EventArgs
+        protected static void AddLazyStimulus<TSource, TEventArgs>(Dictionary<string, Func<IUnityContainer, TriggerBase>> stimuli, string key, INotifyPropertyChanged source, /*Expression<Func<TSource>> evLazySource*/string propertyNameChain, string evName) where TSource : class //where TEventArgs : EventArgs
         {
             if (stimuli.ContainsKey(key))
             {
                 return;
             }
 
-            if (filter == null)
+            stimuli[key] = (c) =>
             {
-                stimuli[key] = (c) =>
-                {
-                    IScheduler scheduler = c.TryGetInstance<IScheduler>(StateMachineBase.BehaviorSchedulerKey);
-                    Logger logger = c.TryGetTypeRegistration<Logger>();
-                    return new Trigger<TSource, TEventArgs>(evLazySource, evName, scheduler, logger);
-                };
-            }
-            else
-            {
-                stimuli[key] = (c) =>
-                {
-                    IScheduler scheduler = c.TryGetInstance<IScheduler>(StateMachineBase.BehaviorSchedulerKey);
-                    Logger logger = c.TryGetTypeRegistration<Logger>();
-                    return new Trigger<TSource, TEventArgs>(evLazySource, evName, new Constraint<TEventArgs>(filterName, filter, logger), scheduler, logger);
-                };
-            }
+                IScheduler scheduler = c.TryGetInstance<IScheduler>(StateMachineBase.BehaviorSchedulerKey);
+                Logger logger = c.TryGetTypeRegistration<Logger>();
+                return new LazyTrigger<TSource, TEventArgs>(source, propertyNameChain, evName, scheduler, logger);
+            };
         }
 
         /// <summary>
@@ -511,7 +501,7 @@ namespace Sequentials.Builders
         /// <param name="evName"></param>
         /// <param name="filter">a Func that will be given to an IConstraint in order to implement a filter for the Trigger.</param>
         /// <param name="filterName">A string name for the IConstraint used to implement the given filter.</param>
-        protected static void AddDelegateStimulus<TSource, TDelegate, TEventArgs>(Dictionary<string, Func<IUnityContainer, TriggerBase>> stimuli, string key, TSource evSource, string evName, Func<TEventArgs, bool> filter = null, string filterName = null) //where TEventArgs : EventArgs
+        protected static void AddDelegateStimulus<TSource, TDelegate, TEventArgs>(Dictionary<string, Func<IUnityContainer, TriggerBase>> stimuli, string key, TSource evSource, string evName, Func<TEventArgs, bool> filter = null, string filterName = null) where TSource : class //where TEventArgs : EventArgs
         {
             if (stimuli.ContainsKey(key))
             {

@@ -88,5 +88,23 @@ namespace Sequentials
             var machine = new Sequence(sequenceName, container, logger);
             return machine;
         }
+
+        public static Sequence CreateActionAsync(string sequenceName, IScheduler behaviorScheduler, ILog logger, object externalSynchronizer = null)
+        {
+            IUnityContainer container = new UnityContainer();
+            if (behaviorScheduler != null)
+            {
+                // Register the scheduler with external life-cycle because it can be re-used.
+                container.RegisterInstance(typeof(IScheduler), StateMachineBase.BehaviorSchedulerKey, behaviorScheduler, new ExternallyControlledLifetimeManager());
+            }
+
+            if (externalSynchronizer != null)
+            {
+                container.RegisterInstance(StateMachineBase.GlobalSynchronizerKey, externalSynchronizer);
+            }
+
+            var machine = new Sequence(sequenceName, container, logger);
+            return machine;
+        }
     }
 }
