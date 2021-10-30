@@ -11,6 +11,7 @@ using Unity;
 using log4net;
 using CleanMachine.Interfaces;
 using System.ComponentModel;
+using CleanMachine.Interfaces.Generic;
 
 namespace Sequentials.Builders
 {
@@ -160,7 +161,7 @@ namespace Sequentials.Builders
                     IEnumerable<string> localExitKeys = (nodeBinder == null) ? new List<string>() : nodeBinder.ReflexKeys;
 
                     // TODO: Should No-Op nodes get abort/exit links?
-                    IConstraint exitGuard = (_exitBinder.GuardCondition == null) 
+                    CleanMachine.Interfaces.Generic.IConstraint exitGuard = (_exitBinder.GuardCondition == null) 
                         ? null 
                         : new Constraint<IUnityContainer>(_exitBinder.GuardName, _exitBinder.GuardCondition, Sequence.RuntimeContainer, Sequence.Logger);
 
@@ -185,7 +186,7 @@ namespace Sequentials.Builders
                                     where Stimuli.ContainsKey(key)
                                     select Stimuli[key];
                 // The last time Consumer was set should be the last node before the FinalNode.
-                IConstraint finishGuard = (_finishBinder.GuardCondition == null) 
+                CleanMachine.Interfaces.Generic.IConstraint finishGuard = (_finishBinder.GuardCondition == null) 
                     ? null 
                     : new Constraint<IUnityContainer>(_finishBinder.GuardName, _finishBinder.GuardCondition, Sequence.RuntimeContainer, Sequence.Logger);
                 Sequence.SetTerminalLink(_finishBinder.LinkSupplier, finishGuard, finishStimuli);
@@ -439,9 +440,30 @@ namespace Sequentials.Builders
         /// <summary>
         /// 
         /// </summary>
-        /// <typeparam name="TSource"></typeparam>
-        /// <typeparam name="TEventArgs">The Type of the EventArgs to build the Trigger for.</typeparam>
+        /// <typeparam name="TState"></typeparam>
         /// <param name="stimuli"></param>
+        /// <param name="key"></param>
+        /// <param name="stateful"></param>
+        /// <param name="filter"></param>
+        /// <param name="filterName"></param>
+        protected static void AddStateChangeStimulus<TState>(Dictionary<string, Func<IUnityContainer, TriggerBase>> stimuli, string key, object source, Func<StateChangedEventArgs<TState>, bool> filter = null, string filterName = null) where TState : struct
+        {
+            if (source is IStateful<TState> stateful)
+            {
+                AddStimulus(stimuli, key, stateful.StateMachine, nameof(IStateMachine.StateChanged), filter, filterName);
+            }
+            else
+            {
+                //todo: log it
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <typeparam name="TSource">The type of the owner of the event to be monitored by the new trigger.</typeparam>
+        /// <typeparam name="TEventArgs">The Type of the EventArgs to build the Trigger for.</typeparam>
+        /// <param name="stimuli">The <see cref="Dictionary{TKey, TValue}"/> that will be expanded with the new <see cref="TriggerBase"/>s.</param>
         /// <param name="key"></param>
         /// <param name="evSource"></param>
         /// <param name="evName"></param>
@@ -474,6 +496,16 @@ namespace Sequentials.Builders
             }
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <typeparam name="TSource">The type of the owner of the event to be monitored by the new trigger.</typeparam>
+        /// <typeparam name="TEventArgs">The Type of the EventArgs to build the Trigger for.</typeparam>
+        /// <param name="stimuli">The <see cref="Dictionary{TKey, TValue}"/> that will be expanded with the new <see cref="TriggerBase"/>s.</param>
+        /// <param name="key"></param>
+        /// <param name="source"></param>
+        /// <param name="propertyNameChain"></param>
+        /// <param name="evName"></param>
         protected static void AddLazyStimulus<TSource, TEventArgs>(Dictionary<string, Func<IUnityContainer, TriggerBase>> stimuli, string key, INotifyPropertyChanged source, /*Expression<Func<TSource>> evLazySource*/string propertyNameChain, string evName) where TSource : class //where TEventArgs : EventArgs
         {
             if (stimuli.ContainsKey(key))
