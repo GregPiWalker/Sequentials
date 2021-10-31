@@ -32,8 +32,9 @@ namespace Sequentials.Builders
         protected LinkBinder _finishBinder = null;
 
 
-        private static Func<object, IUnityContainer> ConstraintTransform = (input) => 
+        private static Func<object, IUnityContainer> ConstraintTransform = (input) =>
             { return ((input as TripEventArgs).GetTripOrigin().Juncture as Sequence).RuntimeContainer; };
+        private BuildTimeNodeContext _sharedNodeContext;
 
         /// <summary>
         /// Gets the available Stimuli, which are templates for creating Triggers.
@@ -43,11 +44,25 @@ namespace Sequentials.Builders
 
         protected Sequence Sequence { get; set; }
 
-        protected ActionNode PreviousSupplier { get; set; }
+        /// <summary>
+        /// Using a shared node context allows all the BuilderBase instances to keep working correctly
+        /// in a sequential building scope.  That way, if a builder hangs on to an old reference of
+        /// another builder, either will keep progressing correctly.
+        /// </summary>
+        protected BuildTimeNodeContext SharedNodeContext
+        {
+            get
+            {
+                if (_sharedNodeContext == null)
+                {
+                    _sharedNodeContext = new BuildTimeNodeContext();
+                }
 
-        protected ActionNode Supplier { get; set; }
+                return _sharedNodeContext;
+            }
 
-        protected ActionNode Consumer { get; set; }
+            set => _sharedNodeContext = value;
+        }
 
         protected void TakeFrom(InstructionBuilderBase other)
         {
@@ -59,9 +74,7 @@ namespace Sequentials.Builders
             _exitBinder = other._exitBinder;
             _finishBinder = other._finishBinder;
 
-            PreviousSupplier = other.PreviousSupplier;
-            Supplier = other.Supplier;
-            Consumer = other.Consumer;
+            SharedNodeContext = other.SharedNodeContext;
         }
 
         protected virtual void ConfigureStimuli()
@@ -161,8 +174,8 @@ namespace Sequentials.Builders
                     IEnumerable<string> localExitKeys = (nodeBinder == null) ? new List<string>() : nodeBinder.ReflexKeys;
 
                     // TODO: Should No-Op nodes get abort/exit links?
-                    CleanMachine.Interfaces.Generic.IConstraint exitGuard = (_exitBinder.GuardCondition == null) 
-                        ? null 
+                    CleanMachine.Interfaces.Generic.IConstraint exitGuard = (_exitBinder.GuardCondition == null)
+                        ? null
                         : new Constraint<IUnityContainer>(_exitBinder.GuardName, _exitBinder.GuardCondition, Sequence.RuntimeContainer, Sequence.Logger);
 
 
@@ -186,8 +199,8 @@ namespace Sequentials.Builders
                                     where Stimuli.ContainsKey(key)
                                     select Stimuli[key];
                 // The last time Consumer was set should be the last node before the FinalNode.
-                CleanMachine.Interfaces.Generic.IConstraint finishGuard = (_finishBinder.GuardCondition == null) 
-                    ? null 
+                CleanMachine.Interfaces.Generic.IConstraint finishGuard = (_finishBinder.GuardCondition == null)
+                    ? null
                     : new Constraint<IUnityContainer>(_finishBinder.GuardName, _finishBinder.GuardCondition, Sequence.RuntimeContainer, Sequence.Logger);
                 Sequence.SetTerminalLink(_finishBinder.LinkSupplier, finishGuard, finishStimuli);
 
@@ -212,7 +225,7 @@ namespace Sequentials.Builders
                 _finishBinder = new LinkBinder();
             }
 
-            Consumer = Sequence.InitialNode;
+            SharedNodeContext.Consumer = Sequence.InitialNode;
             AppendActionNode(actionName, action);
 
             return this;
@@ -230,7 +243,7 @@ namespace Sequentials.Builders
                 _finishBinder = new LinkBinder();
             }
 
-            Consumer = Sequence.InitialNode;
+            SharedNodeContext.Consumer = Sequence.InitialNode;
             AppendNoOpNode(whenName, whenName, whenCondition, reflexKeys);
 
             return this;
@@ -253,9 +266,9 @@ namespace Sequentials.Builders
 
         protected InstructionBuilderBase AddOrWhen(string conditionName, Func<IUnityContainer, bool> condition, params string[] reflexKeys)
         {
-            var previous = PreviousSupplier;
+            var previous = SharedNodeContext.PreviousSupplier;
             // Add the consumer no-op node and a link to it from the previous node.
-            EstablishLink(Supplier, Consumer, conditionName, condition, reflexKeys);
+            EstablishLink(SharedNodeContext.Supplier, SharedNodeContext.Consumer, conditionName, condition, reflexKeys);
 
             return this;
         }
@@ -268,7 +281,7 @@ namespace Sequentials.Builders
 
             // Add the jumping link to a jump target.
             var destination = _namedNodes[jumpDestName];
-            EstablishLink(Consumer, destination, ifName, ifCondition, reflexKeys);
+            EstablishLink(SharedNodeContext.Consumer, destination, ifName, ifCondition, reflexKeys);
 
             // Add a no-op node to consume the conditional continuation link.
             // The opposite condition needs the same triggers.
@@ -285,7 +298,7 @@ namespace Sequentials.Builders
             AppendNoOpNode($"{thenName} NoOp");
 
             // Add the by-pass link to skip over the THEN action.
-            EstablishLink(PreviousSupplier, Consumer, "Not " + ifName, c => !ifCondition(c), reflexKeys);
+            EstablishLink(SharedNodeContext.PreviousSupplier, SharedNodeContext.Consumer, "Not " + ifName, c => !ifCondition(c), reflexKeys);
 
             return this;
         }
@@ -293,21 +306,21 @@ namespace Sequentials.Builders
         protected InstructionBuilderBase AddIfThenElse(string ifName, Func<IUnityContainer, bool> ifCondition, string thenName, Action<IUnityContainer> thenBehavior, string elseName, Action<IUnityContainer> elseBehavior, params string[] reflexKeys)
         {
             //TODO: make sure this stereotype change is correct:
-            Consumer.Stereotype = Stereotypes.Decision.ToString();
+            SharedNodeContext.Consumer.Stereotype = Stereotypes.Decision.ToString();
             AppendConditionalActionNode(thenName, thenBehavior, ifName, ifCondition, reflexKeys);
 
             // Add the no-op node to tie up both links.
             var noOp = AppendNoOpNode($"{thenName} NoOp");
 
             // Restore references in order to add another linked node from the same supplier.
-            Consumer = PreviousSupplier;
+            SharedNodeContext.Consumer = SharedNodeContext.PreviousSupplier;
             AppendConditionalActionNode(elseName, elseBehavior, "Not " + ifName, c => !ifCondition(c), reflexKeys);
 
             // Now add a link from the ELSE node to the no-op terminal node.
-            EstablishLink(Consumer, noOp);
+            EstablishLink(SharedNodeContext.Consumer, noOp);
 
             // Finally, fix the reference.
-            Consumer = noOp;
+            SharedNodeContext.Consumer = noOp;
 
             return this;
         }
@@ -330,8 +343,8 @@ namespace Sequentials.Builders
             _finishBinder.GuardName = finishName;
             _finishBinder.GuardCondition = finishCondition;
             _finishBinder.ReflexKeys = reflexKeys;
-            _finishBinder.LinkSupplier = Consumer;
-            
+            _finishBinder.LinkSupplier = SharedNodeContext.Consumer;
+
             return Sequence;
         }
 
@@ -366,48 +379,48 @@ namespace Sequentials.Builders
 
         internal ActionNode AppendActionNode(string actionName, Action<IUnityContainer> action)
         {
-            PreviousSupplier = Supplier;
-            Supplier = Consumer;
-            Consumer = CreateNode(actionName, action);
-            _namedNodes.Add(Consumer.Name, Consumer);
+            SharedNodeContext.PreviousSupplier = SharedNodeContext.Supplier;
+            SharedNodeContext.Supplier = SharedNodeContext.Consumer;
+            SharedNodeContext.Consumer = CreateNode(actionName, action);
+            _namedNodes.Add(SharedNodeContext.Consumer.Name, SharedNodeContext.Consumer);
 
-            EstablishLink(Supplier, Consumer);
+            EstablishLink(SharedNodeContext.Supplier, SharedNodeContext.Consumer);
 
-            return Consumer;
+            return SharedNodeContext.Consumer;
         }
 
         internal ActionNode AppendConditionalActionNode(string actionName, Action<IUnityContainer> action, string conditionName, Func<IUnityContainer, bool> condition, params string[] reflexKeys)
         {
-            PreviousSupplier = Supplier;
-            Supplier = Consumer;
-            Consumer = CreateNode(actionName, action);
-            _namedNodes.Add(Consumer.Name, Consumer);
+            SharedNodeContext.PreviousSupplier = SharedNodeContext.Supplier;
+            SharedNodeContext.Supplier = SharedNodeContext.Consumer;
+            SharedNodeContext.Consumer = CreateNode(actionName, action);
+            _namedNodes.Add(SharedNodeContext.Consumer.Name, SharedNodeContext.Consumer);
 
-            if (Stereotypes.NoOp.ToString().Equals(Supplier.Stereotype))
+            if (Stereotypes.NoOp.ToString().Equals(SharedNodeContext.Supplier.Stereotype))
             {
-                UpdateNodeName(Supplier, conditionName);
+                UpdateNodeName(SharedNodeContext.Supplier, conditionName);
             }
 
-            EstablishLink(Supplier, Consumer, conditionName, condition, reflexKeys);
+            EstablishLink(SharedNodeContext.Supplier, SharedNodeContext.Consumer, conditionName, condition, reflexKeys);
 
-            return Consumer;
+            return SharedNodeContext.Consumer;
         }
 
 
         internal ActionNode AppendNoOpNode(string nodeName, string conditionName = null, Func<IUnityContainer, bool> condition = null, params string[] reflexKeys)
         {
-            PreviousSupplier = Supplier;
-            Supplier = Consumer;
-            Consumer = CreateNode(nodeName);
+            SharedNodeContext.PreviousSupplier = SharedNodeContext.Supplier;
+            SharedNodeContext.Supplier = SharedNodeContext.Consumer;
+            SharedNodeContext.Consumer = CreateNode(nodeName);
 
-            if (!string.IsNullOrEmpty(conditionName) && Stereotypes.NoOp.ToString().Equals(Supplier.Stereotype))
+            if (!string.IsNullOrEmpty(conditionName) && Stereotypes.NoOp.ToString().Equals(SharedNodeContext.Supplier.Stereotype))
             {
-                UpdateNodeName(Supplier, conditionName);
+                UpdateNodeName(SharedNodeContext.Supplier, conditionName);
             }
 
-            EstablishLink(Supplier, Consumer, conditionName, condition, reflexKeys);
+            EstablishLink(SharedNodeContext.Supplier, SharedNodeContext.Consumer, conditionName, condition, reflexKeys);
 
-            return Consumer;
+            return SharedNodeContext.Consumer;
         }
 
         internal void EstablishLink(State fromState, State toState, string conditionName = null, Func<IUnityContainer, bool> condition = null, params string[] reflexKeys)
@@ -433,7 +446,7 @@ namespace Sequentials.Builders
             if (_namedNodes.ContainsKey(oldName) && _namedNodes[oldName] == node)
             {
                 _namedNodes.Remove(oldName);
-                _namedNodes.Add(node.Name, Supplier);
+                _namedNodes.Add(node.Name, SharedNodeContext.Supplier);
             }
         }
 
